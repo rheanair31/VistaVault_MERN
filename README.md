@@ -8,11 +8,9 @@
   <img src="https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js">
 </div>
 
+
 A modern, full-stack real estate platform built with the MERN stack (MongoDB, Express.js, React.js, Node.js) that provides a seamless booking experience for users and property owners. VistaVault connects travelers with unique accommodations while offering property owners an intuitive platform to manage their listings.
 
-enshots/profile-page.png" alt="User Profile Dashboard" width="700"/>
-  <p><em>Comprehensive user profile with navigation tabs for bookings and accommodations</em></p>
-</div>
 
 ## 🚀 Features
 
