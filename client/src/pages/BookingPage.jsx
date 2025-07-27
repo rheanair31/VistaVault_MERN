@@ -1,4 +1,4 @@
-import {useParams} from "react-router-dom";
+import {useParams} from "react-router-dom"; //useParams() is a React Router hook that lets you grab values from the URL.
 import {useEffect, useState} from "react";
 import axios from "axios";
 import AddressLink from "../AddressLink";

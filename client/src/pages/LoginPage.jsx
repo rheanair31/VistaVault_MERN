@@ -1,5 +1,6 @@
 import { Link, Navigate } from "react-router-dom";
-import { useContext, useState } from "react";
+import { useContext, useState } from "react"; //useContext: to update user info globally
+
 import axios from "axios";
 import { UserContext } from "../UserContext.jsx";
 

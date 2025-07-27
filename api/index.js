@@ -16,22 +16,13 @@ const path = require('path');
 require('dotenv').config();
 const app = express();
 
-// Set strictQuery to false or true based on your preference
-mongoose.set('strictQuery', false); // Prepare for the default change in Mongoose 7
-// OR
-// mongoose.set('strictQuery', true); // To suppress the warning
-
-// Connect to MongoDB
+mongoose.set('strictQuery', false);
 mongoose.connect(process.env.MONGO_URL)
-  .then(() => {
-    console.log("MongoDB connected");
-  })
-  .catch(err => {
-    console.error("MongoDB connection error:", err);
-  });
+  .then(() => console.log("MongoDB connected"))
+  .catch(err => console.error("MongoDB connection error:", err));
 
 const bcryptSalt = bcrypt.genSaltSync(10);
-const jwtSecret = process.env.JWT_SECRET || 'fallback_secret'; // Use environment variable for JWT secret
+const jwtSecret = process.env.JWT_SECRET || 'fallback_secret';
 
 app.use(express.json());
 app.use(cookieParser());
@@ -41,7 +32,6 @@ app.use(cors({
   origin: 'http://localhost:5173',
 }));
 
-// Middleware to extract user data from token
 async function getUserDataFromReq(req) {
   return new Promise((resolve, reject) => {
     jwt.verify(req.cookies.token, jwtSecret, {}, async (err, userData) => {
@@ -51,15 +41,11 @@ async function getUserDataFromReq(req) {
   });
 }
 
-// Test endpoint
-app.get('/test', (req, res) => {
-  res.json('test ok');
-});
+app.get('/test', (req, res) => res.json('test ok'));
 
-// User registration
+// USER AUTH
 app.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
-
   try {
     const userDoc = await User.create({
       name,
@@ -68,22 +54,18 @@ app.post('/register', async (req, res) => {
     });
     res.json(userDoc);
   } catch (e) {
-    console.error(e); // Log the error for debugging
+    console.error(e);
     res.status(422).json({ error: e.message });
   }
 });
 
-// User login
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
   const userDoc = await User.findOne({ email });
   if (userDoc) {
     const passOk = bcrypt.compareSync(password, userDoc.password);
     if (passOk) {
-      jwt.sign({
-        email: userDoc.email,
-        id: userDoc._id
-      }, jwtSecret, {}, (err, token) => {
+      jwt.sign({ email: userDoc.email, id: userDoc._id }, jwtSecret, {}, (err, token) => {
         if (err) throw err;
         res.cookie('token', token).json(userDoc);
       });
@@ -95,7 +77,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Get user profile
 app.get('/profile', async (req, res) => {
   const { token } = req.cookies;
   if (token) {
@@ -109,12 +90,9 @@ app.get('/profile', async (req, res) => {
   }
 });
 
-// User logout
-app.post('/logout', (req, res) => {
-  res.cookie('token', '').json(true);
-});
+app.post('/logout', (req, res) => res.cookie('token', '').json(true));
 
-// Upload by link
+// UPLOADS
 app.post('/upload-by-link', async (req, res) => {
   const { link } = req.body;
   const newName = 'photo' + Date.now() + '.jpg';
@@ -126,7 +104,6 @@ app.post('/upload-by-link', async (req, res) => {
   res.json(url);
 });
 
-// File upload middleware
 const photosMiddleware = multer({ dest: 'uploads/' });
 app.post('/upload', photosMiddleware.array('photos', 100), async (req, res) => {
   const uploadedFiles = [];
@@ -138,23 +115,17 @@ app.post('/upload', photosMiddleware.array('photos', 100), async (req, res) => {
 
   for (let i = 0; i < req.files.length; i++) {
     const { path: tempPath, originalname } = req.files[i];
-    const parts = originalname.split('.');
-    const ext = parts[parts.length - 1];
-
-    // Create a unique filename
+    const ext = originalname.split('.').pop();
     const newFileName = `${Date.now()}.${ext}`;
     const newPath = path.join(uploadsDir, newFileName);
-
     fs.renameSync(tempPath, newPath);
-
-    // Push just the filename
-    uploadedFiles.push(newFileName); // Do not include 'uploads/' here
+    uploadedFiles.push(newFileName);
   }
 
   res.json(uploadedFiles);
 });
 
-// Create a place
+// PLACES
 app.post('/places', async (req, res) => {
   const { token } = req.cookies;
   const {
@@ -172,17 +143,14 @@ app.post('/places', async (req, res) => {
   });
 });
 
-// Get user places
 app.get('/user-places', async (req, res) => {
   const { token } = req.cookies;
   jwt.verify(token, jwtSecret, {}, async (err, userData) => {
     if (err) return res.status(401).json({ error: 'Unauthorized' });
-    const { id } = userData;
-    res.json(await Place.find({ owner: id }));
+    res.json(await Place.find({ owner: userData.id }));
   });
 });
 
-// Get a place by ID
 app.get('/places/:id', async (req, res) => {
   const { id } = req.params;
   const place = await Place.findById(id);
@@ -193,7 +161,6 @@ app.get('/places/:id', async (req, res) => {
   }
 });
 
-// Update a place
 app.put('/places', async (req, res) => {
   const { token } = req.cookies;
   const {
@@ -216,36 +183,58 @@ app.put('/places', async (req, res) => {
   });
 });
 
-// Get all places
 app.get('/places', async (req, res) => {
   res.json(await Place.find());
 });
 
-// Create a booking
+// ✅ BOOKINGS WITH CONFLICT CHECK
 app.post('/bookings', async (req, res) => {
   try {
     const userData = await getUserDataFromReq(req);
     const {
       place, checkIn, checkOut, numberOfGuests, name, phone, price,
     } = req.body;
+
+    // 🔐 Prevent overlapping bookings
+    const existing = await Booking.find({
+      place,
+      $or: [
+        { checkIn: { $lt: new Date(checkOut) }, checkOut: { $gt: new Date(checkIn) } }
+      ]
+    });
+
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'This property is already booked for the selected dates.' });
+    }
+
     const booking = await Booking.create({
       place, checkIn, checkOut, numberOfGuests, name, phone, price,
       user: userData.id,
     });
+
     res.json(booking);
   } catch (err) {
-    console.error(err); // Log the error for debugging
+    console.error(err);
     res.status(500).json({ error: 'Failed to create booking' });
   }
 });
 
-// Get user bookings
 app.get('/bookings', async (req, res) => {
   const userData = await getUserDataFromReq(req);
   res.json(await Booking.find({ user: userData.id }).populate('place'));
 });
 
-// Start the server
+// ✅ New route: Get bookings for a specific place
+app.get('/bookings/place/:id', async (req, res) => {
+  try {
+    const bookings = await Booking.find({ place: req.params.id });
+    res.json(bookings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch bookings' });
+  }
+});
+
 app.listen(4000, () => {
   console.log("Server is running on port 4000");
 });
